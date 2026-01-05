@@ -1,16 +1,40 @@
-//console.log("Hello via Bun!");
-const server
-= Bun.serve({
-    port: process.env.PORT || 3000,
-    hostname: process.env.HOST || '0.0.0.0',
-    fetch: async (req) => {
-        return new Response('Hello World');
-    },
-    websocket: {
-        message: (ws, message) => {
-            ws.send(message);
-        },
-    },
+import { groqservice } from './services/groq'; //console.log("Hello via Bun!");
+import   type { IAService, ChatMessage } from './services/types';
+import { cerebrasService } from './services/cerebras';
+
+const services: IAService[] = [
+    groqservice,
+    cerebrasService
+];
+
+let currentService=0;
+
+function getNextService() {
+    currentService = (currentService + 1) % services.length;
+    return services[currentService];
+}
+
+
+const server= Bun.serve({
+    port: process.env.PORT ?? 3000,
+    async fetch(req) {
+        const {pathname} = new URL(req.url);
+        if (req.method === 'POST' && pathname === '/chat')   {
+            const {messages} = await req.json() as {messages: ChatMessage[]};
+            const service = getNextService();
+            console.log(`Using service: ${service?.name}`);
+            const stream = await service?.chat(messages)
+            return new Response(stream ,{
+                headers: {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                }
+            });
+        }
+        return new Response("Not found", {status: 404});    
+    }   
 });
-console.log(`Server is running on ${server.url}:${server.port} `  
- );
+
+
+console.log(`Server is running on ${server.url}:${server.port}`);
